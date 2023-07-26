@@ -31,6 +31,12 @@ provider "rhcs" {
   url   = var.url
 }
 
+provider "aws" {
+  access_key = var.aws_access_key
+  secret_key = var.aws_secret_key
+  region     = var.aws_region
+}
+
 resource "rhcs_rosa_oidc_config" "oidc_config" {
   managed = true
 }
@@ -42,7 +48,7 @@ data "rhcs_rosa_operator_roles" "operator_roles" {
 
 module "operator_roles_and_oidc_provider" {
   source  = "terraform-redhat/rosa-sts/aws"
-  version = "0.0.9"
+  version = "0.0.12"
 
   create_operator_roles = true
   create_oidc_provider  = true

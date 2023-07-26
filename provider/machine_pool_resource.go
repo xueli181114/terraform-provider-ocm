@@ -20,7 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -28,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/terraform-redhat/terraform-provider-rhcs/provider/common"
 
 	cmv1 "github.com/openshift-online/ocm-sdk-go/clustersmgmt/v1"
@@ -53,20 +56,29 @@ func (t *MachinePoolResourceType) GetSchema(ctx context.Context) (result tfsdk.S
 				Description: "Identifier of the cluster.",
 				Type:        types.StringType,
 				Required:    true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					ValueCannotBeChangedModifier(),
+				},
 			},
 			"id": {
 				Description: "Unique identifier of the machine pool.",
 				Type:        types.StringType,
 				Computed:    true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
+				},
 			},
 			"name": {
 				Description: "Name of the machine pool.Must consist of lower-case alphanumeric characters or '-', start with an alphabetic character, and end with an alphanumeric character.",
 				Type:        types.StringType,
 				Required:    true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					ValueCannotBeChangedModifier(),
+				},
 			},
 			"machine_type": {
 				Description: "Identifier of the machine type used by the nodes, " +
-					"for example `r5.xlarge`. Use the `ocm_machine_types` data " +
+					"for example `r5.xlarge`. Use the `rhcs_machine_types` data " +
 					"source to find the possible values.",
 				Type:     types.StringType,
 				Required: true,
@@ -141,6 +153,36 @@ func (t *MachinePoolResourceType) GetSchema(ctx context.Context) (result tfsdk.S
 					ElemType: types.StringType,
 				},
 				Optional: true,
+			},
+			"multi_availability_zone": {
+				Description: "Create a multi-AZ machine pool for a multi-AZ cluster (default true)",
+				Type:        types.BoolType,
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
+					ValueCannotBeChangedModifier(),
+				},
+			},
+			"availability_zone": {
+				Description: "Select availability zone to create a single AZ machine pool for a multi-AZ cluster",
+				Type:        types.StringType,
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
+					ValueCannotBeChangedModifier(),
+				},
+			},
+			"subnet_id": {
+				Description: "Select subnet to create a single AZ machine pool for BYOVPC cluster",
+				Type:        types.StringType,
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
+					ValueCannotBeChangedModifier(),
+				},
 			},
 		},
 	}
@@ -219,6 +261,24 @@ func (r *MachinePoolResource) Create(ctx context.Context,
 		return
 	}
 
+	isMultiAZPool, err := r.validateAZConfig(state)
+	if err != nil {
+		response.Diagnostics.AddError(
+			"Can't build machine pool",
+			fmt.Sprintf(
+				"Can't build machine pool for cluster '%s': %v",
+				state.Cluster.Value, err,
+			),
+		)
+		return
+	}
+	if !common.IsStringAttributeEmpty(state.AvailabilityZone) {
+		builder.AvailabilityZones(state.AvailabilityZone.Value)
+	}
+	if !common.IsStringAttributeEmpty(state.SubnetID) {
+		builder.Subnets(state.SubnetID.Value)
+	}
+
 	autoscalingEnabled := false
 	computeNodeEnabled := false
 	autoscalingEnabled, errMsg := getAutoscaling(state, builder)
@@ -234,13 +294,23 @@ func (r *MachinePoolResource) Create(ctx context.Context,
 
 	if !state.Replicas.Unknown && !state.Replicas.Null {
 		computeNodeEnabled = true
+		if isMultiAZPool && state.Replicas.Value%3 != 0 {
+			response.Diagnostics.AddError(
+				"Can't build machine pool",
+				fmt.Sprintf(
+					"Can't build machine pool for cluster '%s', replicas must be a multiple of 3",
+					state.Cluster.Value,
+				),
+			)
+			return
+		}
 		builder.Replicas(int(state.Replicas.Value))
 	}
 	if (!autoscalingEnabled && !computeNodeEnabled) || (autoscalingEnabled && computeNodeEnabled) {
 		response.Diagnostics.AddError(
 			"Can't build machine pool",
 			fmt.Sprintf(
-				"Can't build machine pool for cluster '%s', should hold either Autoscaling or Compute nodes",
+				"Can't build machine pool for cluster '%s', please provide a value for either the 'replicas' or 'autoscaling_enabled' parameter. It is mandatory to include at least one of these parameters in the resource plan.",
 				state.Cluster.Value,
 			),
 		)
@@ -310,17 +380,23 @@ func (r *MachinePoolResource) Read(ctx context.Context, request tfsdk.ReadResour
 		MachinePools().
 		MachinePool(state.ID.Value)
 	get, err := resource.Get().SendContext(ctx)
-	if err != nil {
+	if err != nil && get.Status() == http.StatusNotFound {
+		tflog.Warn(ctx, fmt.Sprintf("machine pool (%s) of cluster (%s) not found, removing from state",
+			state.ID.Value, state.Cluster.Value,
+		))
+		response.State.RemoveResource(ctx)
+		return
+	} else if err != nil {
 		response.Diagnostics.AddError(
-			"Can't find machine pool",
+			"Failed to fetch machine pool",
 			fmt.Sprintf(
-				"Can't find machine pool with identifier '%s' for "+
-					"cluster '%s': %v",
-				state.ID.Value, state.Cluster.Value, err,
+				"Failed to fetch machine pool with identifier %s for cluster %s. Response code: %v",
+				state.ID.Value, state.Cluster.Value, get.Status(),
 			),
 		)
 		return
 	}
+
 	object := get.Body()
 
 	// Save the state:
@@ -464,6 +540,84 @@ func (r *MachinePoolResource) Update(ctx context.Context, request tfsdk.UpdateRe
 	response.Diagnostics.Append(diags...)
 }
 
+// Validate the machine pool's settings that pertain to availability zones.
+// Returns whether the machine pool is/will be multi-AZ.
+func (r *MachinePoolResource) validateAZConfig(state *MachinePoolState) (bool, error) {
+	resp, err := r.collection.Cluster(state.Cluster.Value).Get().Send()
+	if err != nil {
+		return false, fmt.Errorf("failed to get information for cluster %s: %v", state.Cluster.Value, err)
+	}
+	cluster := resp.Body()
+	isMultiAZCluster := cluster.MultiAZ()
+	clusterAZs := cluster.Nodes().AvailabilityZones()
+	clusterSubnets := cluster.AWS().SubnetIDs()
+
+	if isMultiAZCluster {
+		// Can't set both availability_zone and subnet_id
+		if !common.IsStringAttributeEmpty(state.AvailabilityZone) && !common.IsStringAttributeEmpty(state.SubnetID) {
+			return false, fmt.Errorf("availability_zone and subnet_id are mutually exclusive")
+		}
+
+		// multi_availability_zone setting must be consistent with availability_zone and subnet_id
+		azOrSubnet := !common.IsStringAttributeEmpty(state.AvailabilityZone) || !common.IsStringAttributeEmpty(state.SubnetID)
+		if !state.MultiAvailabilityZone.Null && !state.MultiAvailabilityZone.Unknown {
+			if azOrSubnet && state.MultiAvailabilityZone.Value {
+				return false, fmt.Errorf("multi_availability_zone must be False when availability_zone or subnet_id is set")
+			}
+		} else {
+			state.MultiAvailabilityZone = types.Bool{Value: !azOrSubnet}
+		}
+	} else { // not a multi-AZ cluster
+		if !common.IsStringAttributeEmpty(state.AvailabilityZone) {
+			return false, fmt.Errorf("availability_zone can only be set for multi-AZ clusters")
+		}
+		if !common.IsStringAttributeEmpty(state.SubnetID) {
+			return false, fmt.Errorf("subnet_id can only be set for multi-AZ clusters")
+		}
+		if !state.MultiAvailabilityZone.Null && !state.MultiAvailabilityZone.Unknown && state.MultiAvailabilityZone.Value {
+			return false, fmt.Errorf("multi_availability_zone can only be set for multi-AZ clusters")
+		}
+		state.MultiAvailabilityZone = types.Bool{Value: false}
+	}
+
+	// Ensure that the machine pool's AZ and subnet are valid for the cluster
+	// If subnet is set, we make sure it's valid for the cluster, but we don't default it if not set
+	if !common.IsStringAttributeEmpty(state.SubnetID) {
+		inClusterSubnet := false
+		for _, subnet := range clusterSubnets {
+			if subnet == state.SubnetID.Value {
+				inClusterSubnet = true
+				break
+			}
+		}
+		if !inClusterSubnet {
+			return false, fmt.Errorf("subnet_id %s is not valid for cluster %s", state.SubnetID.Value, state.Cluster.Value)
+		}
+	} else {
+		state.SubnetID = types.String{Null: true}
+	}
+	// If AZ is set, we make sure it's valid for the cluster. If not set and neither is subnet, we default it to the 1st AZ in the cluster
+	if !common.IsStringAttributeEmpty(state.AvailabilityZone) {
+		inClusterAZ := false
+		for _, az := range clusterAZs {
+			if az == state.AvailabilityZone.Value {
+				inClusterAZ = true
+				break
+			}
+		}
+		if !inClusterAZ {
+			return false, fmt.Errorf("availability_zone %s is not valid for cluster %s", state.AvailabilityZone.Value, state.Cluster.Value)
+		}
+	} else {
+		if len(clusterAZs) > 0 && !state.MultiAvailabilityZone.Value && isMultiAZCluster && common.IsStringAttributeEmpty(state.SubnetID) {
+			state.AvailabilityZone = types.String{Value: clusterAZs[0]}
+		} else {
+			state.AvailabilityZone = types.String{Null: true}
+		}
+	}
+	return state.MultiAvailabilityZone.Value, nil
+}
+
 func setSpotInstances(state *MachinePoolState, mpBuilder *cmv1.MachinePoolBuilder) error {
 	useSpotInstances := !state.UseSpotInstances.Unknown && !state.UseSpotInstances.Null && state.UseSpotInstances.Value
 	isSpotMaxPriceSet := !state.MaxSpotPrice.Unknown && !state.MaxSpotPrice.Null
@@ -551,12 +705,19 @@ func (r *MachinePoolResource) Delete(ctx context.Context, request tfsdk.DeleteRe
 
 func (r *MachinePoolResource) ImportState(ctx context.Context, request tfsdk.ImportResourceStateRequest,
 	response *tfsdk.ImportResourceStateResponse) {
-	tfsdk.ResourceImportStatePassthroughID(
-		ctx,
-		tftypes.NewAttributePath().WithAttributeName("id"),
-		request,
-		response,
-	)
+	// To import a machine pool, we need to know the cluster ID and the machine pool ID
+	fields := strings.Split(request.ID, ",")
+	if len(fields) != 2 || fields[0] == "" || fields[1] == "" {
+		response.Diagnostics.AddError(
+			"Invalid import identifier",
+			"Machine pool to import should be specified as <cluster_id>,<machine_pool_id>",
+		)
+		return
+	}
+	clusterID := fields[0]
+	machinePoolID := fields[1]
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, tftypes.NewAttributePath().WithAttributeName("cluster"), clusterID)...)
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, tftypes.NewAttributePath().WithAttributeName("id"), machinePoolID)...)
 }
 
 // populateState copies the data from the API object to the Terraform state.
@@ -596,8 +757,8 @@ func (r *MachinePoolResource) populateState(object *cmv1.MachinePool, state *Mac
 			}
 		}
 	} else {
-		state.MaxReplicas.Null = true
-		state.MinReplicas.Null = true
+		state.MaxReplicas = types.Int64{Null: true}
+		state.MinReplicas = types.Int64{Null: true}
 	}
 
 	instanceType, ok := object.GetInstanceType()
@@ -631,7 +792,7 @@ func (r *MachinePoolResource) populateState(object *cmv1.MachinePool, state *Mac
 	}
 
 	labels := object.Labels()
-	if labels != nil && len(labels) > 0 {
+	if len(labels) > 0 {
 		state.Labels = types.Map{
 			ElemType: types.StringType,
 			Elems:    map[string]attr.Value{},
@@ -644,7 +805,6 @@ func (r *MachinePoolResource) populateState(object *cmv1.MachinePool, state *Mac
 	} else {
 		state.Labels.Null = true
 	}
-
 }
 
 func shouldPatchTaints(a, b []Taints) bool {

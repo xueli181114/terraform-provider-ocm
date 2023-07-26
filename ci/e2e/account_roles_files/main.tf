@@ -16,11 +16,19 @@ provider "rhcs" {
   url   = var.url
 }
 
+provider "aws" {
+  access_key = var.aws_access_key
+  secret_key = var.aws_secret_key
+  region     = var.aws_region
+}
+
 data "rhcs_policies" "all_policies" {}
+
+data "rhcs_versions" "all" {}
 
 module "create_account_roles" {
   source  = "terraform-redhat/rosa-sts/aws"
-  version = "0.0.9"
+  version = "0.0.12"
 
   create_operator_roles = false
   create_oidc_provider  = false
@@ -31,4 +39,5 @@ module "create_account_roles" {
   rosa_openshift_version = "${split(".", var.openshift_version)[0]}.${split(".", var.openshift_version)[1]}"
   account_role_policies  = data.rhcs_policies.all_policies.account_role_policies
   operator_role_policies = data.rhcs_policies.all_policies.operator_role_policies
+  all_versions           = data.rhcs_versions.all
 }

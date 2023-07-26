@@ -4,12 +4,13 @@ variable "ocm_environment" {
 }
 
 variable "openshift_version" {
-  type    = string
-  default = "4.13"
+  type = string
+  default = ""
 }
 
 variable "account_role_prefix" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "token" {
@@ -33,4 +34,3 @@ variable "tags" {
   type        = map(string)
   default     = null
 }
-

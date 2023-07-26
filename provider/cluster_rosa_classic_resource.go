@@ -30,25 +30,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/openshift/rosa/pkg/helper"
+	"github.com/openshift/rosa/pkg/properties"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/openshift/rosa/pkg/ocm"
 	"github.com/terraform-redhat/terraform-provider-rhcs/build"
 	"github.com/terraform-redhat/terraform-provider-rhcs/provider/common"
+	"github.com/terraform-redhat/terraform-provider-rhcs/provider/idps"
 	"github.com/terraform-redhat/terraform-provider-rhcs/provider/upgrade"
 
-	"github.com/aws/aws-sdk-go/aws/arn"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/iam"
 	semver "github.com/hashicorp/go-version"
 	ver "github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	cmv1 "github.com/openshift-online/ocm-sdk-go/clustersmgmt/v1"
 	ocm_errors "github.com/openshift-online/ocm-sdk-go/errors"
@@ -74,11 +72,6 @@ var OCMProperties = map[string]string{
 var kmsArnRE = regexp.MustCompile(
 	`^arn:aws[\w-]*:kms:[\w-]+:\d{12}:key\/mrk-[0-9a-f]{32}$|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
 )
-
-var addTerraformProviderVersionToUserAgent = request.NamedHandler{
-	Name: "ocmTerraformProvider.VersionUserAgentHandler",
-	Fn:   request.MakeAddToUserAgentHandler("TERRAFORM_PROVIDER_OCM", build.Version),
-}
 
 type ClusterRosaClassicResourceType struct {
 }
@@ -109,6 +102,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -137,6 +131,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -192,6 +187,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -234,7 +230,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 			},
 			"compute_machine_type": {
 				Description: "Identifies the machine type used by the compute nodes, " +
-					"for example `r5.xlarge`. Use the `ocm_machine_types` data " +
+					"for example `r5.xlarge`. Use the `rhcs_machine_types` data " +
 					"source to find the possible values.",
 				Type:     types.StringType,
 				Optional: true,
@@ -292,6 +288,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -311,6 +308,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -347,6 +345,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -356,6 +355,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -365,6 +365,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -374,6 +375,7 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []tfsdk.AttributePlanModifier{
+					tfsdk.UseStateForUnknown(),
 					ValueCannotBeChangedModifier(),
 				},
 			},
@@ -420,6 +422,33 @@ func (t *ClusterRosaClassicResourceType) GetSchema(ctx context.Context) (result 
 					"upgrade to OpenShift 4.12.z from 4.11 or before).",
 				Type:     types.StringType,
 				Optional: true,
+			},
+			"admin_credentials": {
+				Description: "Admin user credentials",
+				Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
+					"username": {
+						Description: "Admin username that will be created with the cluster.",
+						Type:        types.StringType,
+						Required:    true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							ValueCannotBeChangedModifier(),
+						},
+					},
+					"password": {
+						Description: "Admin password that will be created with the cluster.",
+						Type:        types.StringType,
+						Required:    true,
+						Sensitive:   true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							ValueCannotBeChangedModifier(),
+						},
+					},
+				}),
+				Optional: true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					ValueCannotBeChangedModifier(),
+				},
+				Validators: adminCredsValidators(),
 			},
 		},
 	}
@@ -551,7 +580,7 @@ func createClassicClusterObject(ctx context.Context,
 	}
 	builder.CCS(ccs)
 
-	aws := cmv1.NewAWS()
+	awsBuilder := cmv1.NewAWS()
 
 	if !state.Tags.Unknown && !state.Tags.Null {
 		tags := map[string]string{}
@@ -569,12 +598,12 @@ func createClassicClusterObject(ctx context.Context,
 			tags[k] = v.(types.String).Value
 		}
 
-		aws.Tags(tags)
+		awsBuilder.Tags(tags)
 	}
 
 	if !common.IsStringAttributeEmpty(state.Ec2MetadataHttpTokens) {
 		// value validation was done before
-		aws.Ec2MetadataHttpTokens(cmv1.Ec2MetadataHttpTokens(state.Ec2MetadataHttpTokens.Value))
+		awsBuilder.Ec2MetadataHttpTokens(cmv1.Ec2MetadataHttpTokens(state.Ec2MetadataHttpTokens.Value))
 	}
 
 	if !state.KMSKeyArn.Unknown && !state.KMSKeyArn.Null && state.KMSKeyArn.Value != "" {
@@ -589,15 +618,15 @@ func createClassicClusterObject(ctx context.Context,
 			)
 			return nil, errors.New(errHeadline + "\n" + errDescription)
 		}
-		aws.KMSKeyArn(kmsKeyARN)
+		awsBuilder.KMSKeyArn(kmsKeyARN)
 	}
 
 	if !state.AWSAccountID.Unknown && !state.AWSAccountID.Null {
-		aws.AccountID(state.AWSAccountID.Value)
+		awsBuilder.AccountID(state.AWSAccountID.Value)
 	}
 
 	if !state.AWSPrivateLink.Unknown && !state.AWSPrivateLink.Null {
-		aws.PrivateLink((state.AWSPrivateLink.Value))
+		awsBuilder.PrivateLink((state.AWSPrivateLink.Value))
 		api := cmv1.NewClusterAPI()
 		if state.AWSPrivateLink.Value {
 			api.Listening(cmv1.ListeningMethodInternal)
@@ -625,7 +654,7 @@ func createClassicClusterObject(ctx context.Context,
 		}
 
 		sts.OperatorRolePrefix(state.Sts.OperatorRolePrefix.Value)
-		aws.STS(sts)
+		awsBuilder.STS(sts)
 	}
 
 	if !state.AWSSubnetIDs.Unknown && !state.AWSSubnetIDs.Null {
@@ -633,11 +662,11 @@ func createClassicClusterObject(ctx context.Context,
 		for _, e := range state.AWSSubnetIDs.Elems {
 			subnetIds = append(subnetIds, e.(types.String).Value)
 		}
-		aws.SubnetIDs(subnetIds...)
+		awsBuilder.SubnetIDs(subnetIds...)
 	}
 
-	if !aws.Empty() {
-		builder.AWS(aws)
+	if !awsBuilder.Empty() {
+		builder.AWS(awsBuilder)
 	}
 	network := cmv1.NewNetwork()
 	if !state.MachineCIDR.Unknown && !state.MachineCIDR.Null {
@@ -696,6 +725,15 @@ func createClassicClusterObject(ctx context.Context,
 		vBuilder.ID(versionID)
 		vBuilder.ChannelGroup(channelGroup)
 		builder.Version(vBuilder)
+	}
+
+	if state.AdminCredentials != nil {
+		htpasswdUsers := []*cmv1.HTPasswdUserBuilder{}
+		htpasswdUsers = append(htpasswdUsers, cmv1.NewHTPasswdUser().
+			Username(state.AdminCredentials.Username.Value).Password(state.AdminCredentials.Password.Value))
+		htpassUserList := cmv1.NewHTPasswdUserList().Items(htpasswdUsers...)
+		htPasswdIDP := cmv1.NewHTPasswdIdentityProvider().Users(htpassUserList)
+		builder.Htpasswd(htPasswdIDP)
 	}
 
 	builder, err = buildProxy(state, builder)
@@ -782,210 +820,6 @@ func validateHttpTokensVersion(ctx context.Context, state *ClusterRosaClassicSta
 		return fmt.Errorf(msg)
 	}
 	return nil
-}
-
-func (r *ClusterRosaClassicResource) validateAccountRoles(ctx context.Context, state *ClusterRosaClassicState, version string) error {
-	tflog.Debug(ctx, "Validating if cluster version is compatible to account roles' version")
-	region := state.CloudRegion.Value
-
-	tflog.Debug(ctx, fmt.Sprintf("Cluster version is %s", version))
-	roleARNs := []string{
-		state.Sts.RoleARN.Value,
-		state.Sts.SupportRoleArn.Value,
-		state.Sts.InstanceIAMRoles.MasterRoleARN.Value,
-		state.Sts.InstanceIAMRoles.WorkerRoleARN.Value,
-	}
-
-	for _, ARN := range roleARNs {
-		if ARN == "" {
-			continue
-		}
-		// get role from arn
-		role, err := getRoleByARN(ARN, region)
-		if err != nil {
-			return fmt.Errorf("Could not get Role '%s' : %v", ARN, err)
-		}
-
-		validVersion, err := r.hasCompatibleVersionTags(ctx, role.Tags, getOcmVersionMinor(version))
-		if err != nil {
-			return fmt.Errorf("Could not validate Role '%s' : %v", ARN, err)
-		}
-		if !validVersion {
-			return fmt.Errorf("account role '%s' is not compatible with version %s. "+
-				"Run 'rosa create account-roles' to create compatible roles and try again",
-				ARN, version)
-		}
-	}
-
-	return nil
-}
-
-// validateOperatorRolePolicies ensures that the operator role policies are
-// compatible with the requested cluster version
-func (r *ClusterRosaClassicResource) validateOperatorRolePolicies(ctx context.Context, state *ClusterRosaClassicState, version string) error {
-	tflog.Debug(ctx, "Validating if cluster version is compatible with the operator role policies")
-
-	operRoles := []*cmv1.OperatorIAMRole{}
-	operRoleClient := r.clusterCollection.Cluster(state.ID.Value).STSOperatorRoles()
-	page := 1
-	size := 100
-	for {
-		resp, err := operRoleClient.List().Page(page).Size(size).SendContext(ctx)
-		if err != nil {
-			return fmt.Errorf("Could not list operator roles: %v", err)
-		}
-		operRoles = append(operRoles, resp.Items().Slice()...)
-		if resp.Size() < size {
-			break
-		}
-		page++
-	}
-
-	region := state.CloudRegion.Value
-	var session *session.Session
-	var iamClient *iam.IAM
-	for _, operRole := range operRoles {
-		roleARN := operRole.RoleARN()
-		if roleARN == "" {
-			continue
-		}
-		if session == nil {
-			var err error
-			session, err = buildSession(region)
-			if err != nil {
-				return fmt.Errorf("Could not build session: %v", err)
-			}
-		}
-		if iamClient == nil {
-			iamClient = iam.New(session)
-		}
-		role, err := getRoleByARN(roleARN, state.CloudRegion.Value)
-		if err != nil {
-			return fmt.Errorf("Could not get Role '%s' : %v", roleARN, err)
-		}
-		attachedPolicies, err := iamClient.ListAttachedRolePoliciesWithContext(ctx, &iam.ListAttachedRolePoliciesInput{
-			MaxItems: aws.Int64(100),
-			RoleName: role.RoleName,
-		})
-		if err != nil {
-			return fmt.Errorf("Could not list attached policies for role '%s' : %v", roleARN, err)
-		}
-		for _, policy := range attachedPolicies.AttachedPolicies {
-			policyARN := policy.PolicyArn
-			policyOut, err := iamClient.GetPolicyWithContext(ctx, &iam.GetPolicyInput{
-				PolicyArn: policyARN,
-			})
-			if err != nil {
-				return fmt.Errorf("Could not get policy '%s' : %v", aws.StringValue(policyARN), err)
-			}
-			tags := policyOut.Policy.Tags
-			validVersion, err := r.hasCompatibleVersionTags(ctx, tags, getOcmVersionMinor(version))
-			if err != nil {
-				return fmt.Errorf("Could not validate policy '%s' : %v", aws.StringValue(policyARN), err)
-			}
-			if !validVersion {
-				return fmt.Errorf("operator role policy '%s' is not compatible with version %s. "+
-					"Upgrade operator roles and try again",
-					aws.StringValue(policyARN), version)
-			}
-		}
-	}
-	return nil
-}
-
-// Check whether the list of tags contains a tag indicating the version of
-// OpenShift it was creted for, and whether that version is at lest as new as
-// the provided version.
-func (r *ClusterRosaClassicResource) hasCompatibleVersionTags(ctx context.Context, iamTags []*iam.Tag, version string) (bool, error) {
-	if len(iamTags) == 0 {
-		return false, nil
-	}
-	for _, tag := range iamTags {
-		if aws.StringValue(tag.Key) == tagsOpenShiftVersion {
-			tflog.Debug(ctx, fmt.Sprintf("tag version is %s", aws.StringValue(tag.Value)))
-			if version == aws.StringValue(tag.Value) {
-				return true, nil
-			}
-			wantedVersion, err := semver.NewVersion(version)
-			if err != nil {
-				return false, err
-			}
-			currentVersion, err := semver.NewVersion(aws.StringValue(tag.Value))
-			if err != nil {
-				return false, err
-			}
-			return currentVersion.GreaterThanOrEqual(wantedVersion), nil
-		}
-	}
-	return false, nil
-}
-
-func getRoleByARN(roleARN, region string) (*iam.Role, error) {
-	// validate arn
-	parsedARN, err := arn.Parse(roleARN)
-	if err != nil {
-		return nil, fmt.Errorf("expected a valid IAM role ARN: %s", err)
-	}
-	// validate arn is for a role resource
-	resource := parsedARN.Resource
-	isRole := strings.Contains(resource, "role/")
-	if !isRole {
-		return nil, fmt.Errorf("expected ARN '%s' to be IAM role resource", roleARN)
-	}
-
-	// get resource name
-	m := strings.LastIndex(resource, "/")
-	roleName := resource[m+1:]
-
-	sess, err := buildSession(region)
-	if err != nil {
-		return nil, err
-	}
-	iamClient := iam.New(sess)
-	roleOutput, err := iamClient.GetRole(&iam.GetRoleInput{
-		RoleName: aws.String(roleName),
-	})
-
-	if err != nil {
-		return nil, err
-	}
-	return roleOutput.Role, nil
-}
-
-func buildSession(region string) (*session.Session, error) {
-	sess, err := session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-		Profile:           "",
-		Config: aws.Config{
-			CredentialsChainVerboseErrors: aws.Bool(true),
-			Region:                        &region,
-			Retryer:                       buildCustomRetryer(),
-			HTTPClient: &http.Client{
-				Transport: http.DefaultTransport,
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create session. Check your AWS configuration and try again")
-	}
-
-	sess.Handlers.Build.PushBackNamed(addTerraformProviderVersionToUserAgent)
-
-	if _, err = sess.Config.Credentials.Get(); err != nil {
-		return nil, fmt.Errorf("Failed to find credentials. Check your AWS configuration and try again")
-	}
-
-	return sess, nil
-}
-
-func buildCustomRetryer() client.DefaultRetryer {
-	return client.DefaultRetryer{
-		NumMaxRetries:    12,
-		MinRetryDelay:    1 * time.Second,
-		MinThrottleDelay: 5 * time.Second,
-		MaxThrottleDelay: 5 * time.Second,
-	}
-
 }
 
 func getOcmVersionMinor(ver string) string {
@@ -1092,17 +926,6 @@ func (r *ClusterRosaClassicResource) Create(ctx context.Context,
 		return
 	}
 
-	err = r.validateAccountRoles(ctx, state, version)
-	if err != nil {
-		response.Diagnostics.AddError(
-			summary,
-			fmt.Sprintf(
-				"Can't build cluster with name '%s', failed while validating account roles: %v",
-				state.Name.Value, err,
-			),
-		)
-		return
-	}
 	err = validateHttpTokensVersion(ctx, state, version)
 	if err != nil {
 		response.Diagnostics.AddError(
@@ -1168,7 +991,13 @@ func (r *ClusterRosaClassicResource) Read(ctx context.Context, request tfsdk.Rea
 
 	// Find the cluster:
 	get, err := r.clusterCollection.Cluster(state.ID.Value).Get().SendContext(ctx)
-	if err != nil {
+	if err != nil && get.Status() == http.StatusNotFound {
+		tflog.Warn(ctx, fmt.Sprintf("cluster (%s) not found, removing from state",
+			state.ID.Value,
+		))
+		response.State.RemoveResource(ctx)
+		return
+	} else if err != nil {
 		response.Diagnostics.AddError(
 			"Can't find cluster",
 			fmt.Sprintf(
@@ -1178,6 +1007,7 @@ func (r *ClusterRosaClassicResource) Read(ctx context.Context, request tfsdk.Rea
 		)
 		return
 	}
+
 	object := get.Body()
 
 	// Save the state:
@@ -1431,15 +1261,6 @@ func (r *ClusterRosaClassicResource) validateUpgrade(ctx context.Context, state,
 		return fmt.Errorf("desired version (%s) is not in the list of available upgrades (%v)", desiredVersion, avail)
 	}
 
-	// Make sure the account roles have been upgraded
-	if err := r.validateAccountRoles(ctx, plan, desiredVersion.String()); err != nil {
-		return fmt.Errorf("failed to validate account roles: %v", err)
-	}
-
-	// Make sure the operator role policies have been upgraded
-	if err := r.validateOperatorRolePolicies(ctx, plan, desiredVersion.String()); err != nil {
-		return fmt.Errorf("failed to validate operator role policies: %v", err)
-	}
 	return nil
 }
 
@@ -1636,35 +1457,7 @@ func (r *ClusterRosaClassicResource) ImportState(ctx context.Context, request tf
 	response *tfsdk.ImportResourceStateResponse) {
 	tflog.Debug(ctx, "begin importstate()")
 
-	// Try to retrieve the object:
-	get, err := r.clusterCollection.Cluster(request.ID).Get().SendContext(ctx)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't find cluster",
-			fmt.Sprintf(
-				"Can't find cluster with identifier '%s': %v",
-				request.ID, err,
-			),
-		)
-		return
-	}
-	object := get.Body()
-
-	// Save the state:
-	state := &ClusterRosaClassicState{}
-	err = populateRosaClassicClusterState(ctx, object, state, DefaultHttpClient{})
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Can't populate cluster state",
-			fmt.Sprintf(
-				"Received error %v", err,
-			),
-		)
-		return
-	}
-
-	diags := response.State.Set(ctx, state)
-	response.Diagnostics.Append(diags...)
+	tfsdk.ResourceImportStatePassthroughID(ctx, tftypes.NewAttributePath().WithAttributeName("id"), request, response)
 }
 
 // populateRosaClassicClusterState copies the data from the API object to the Terraform state.
@@ -1777,7 +1570,10 @@ func populateRosaClassicClusterState(ctx context.Context, object *cmv1.Cluster, 
 
 	azs, ok := object.Nodes().GetAvailabilityZones()
 	if ok {
-		state.AvailabilityZones.Elems = make([]attr.Value, 0)
+		state.AvailabilityZones = types.List{
+			ElemType: types.StringType,
+			Elems:    []attr.Value{},
+		}
 		for _, az := range azs {
 			state.AvailabilityZones.Elems = append(state.AvailabilityZones.Elems, types.String{
 				Value: az,
@@ -1800,12 +1596,24 @@ func populateRosaClassicClusterState(ctx context.Context, object *cmv1.Cluster, 
 		Value: object.EtcdEncryption(),
 	}
 
-	//The API does not return account id
+	// Note: The API does not currently return account id, but we try to get it
+	// anyway. Failing that, we fetch the creator ARN from the properties like
+	// rosa cli does.
 	awsAccountID, ok := object.AWS().GetAccountID()
 	if ok {
 		state.AWSAccountID = types.String{
 			Value: awsAccountID,
 		}
+	} else {
+		// rosa cli gets it from the properties, so we do the same
+		if creatorARN, ok := object.Properties()[properties.CreatorARN]; ok {
+			if arn, err := arn.Parse(creatorARN); err == nil {
+				state.AWSAccountID = types.String{
+					Value: arn.AccountID,
+				}
+			}
+		}
+
 	}
 
 	awsPrivateLink, ok := object.AWS().GetPrivateLink()
@@ -1858,7 +1666,7 @@ func populateRosaClassicClusterState(ctx context.Context, object *cmv1.Cluster, 
 			}
 		}
 		// TODO: fix a bug in uhc-cluster-services
-		if state.Sts.OperatorRolePrefix.Unknown || state.Sts.OperatorRolePrefix.Null {
+		if common.IsStringAttributeEmpty(state.Sts.OperatorRolePrefix) {
 			operatorRolePrefix, ok := sts.GetOperatorRolePrefix()
 			if ok {
 				state.Sts.OperatorRolePrefix = types.String{
@@ -1994,6 +1802,12 @@ func populateRosaClassicClusterState(ctx context.Context, object *cmv1.Cluster, 
 	}
 	state.State = types.String{
 		Value: string(object.State()),
+	}
+	state.Name = types.String{
+		Value: object.Name(),
+	}
+	state.CloudRegion = types.String{
+		Value: object.Region().ID(),
 	}
 
 	return nil
@@ -2193,6 +2007,54 @@ func propertiesValidators() []tfsdk.AttributeValidator {
 							resp.Diagnostics.AddError(errHead, errDesc)
 							return
 						}
+					}
+				}
+			},
+		},
+	}
+}
+
+func adminCredsValidators() []tfsdk.AttributeValidator {
+	errSumm := "Invalid admin_creedntials"
+	return []tfsdk.AttributeValidator{
+		&common.AttributeValidator{
+			Desc: "Validate admin username",
+			Validator: func(ctx context.Context, req tfsdk.ValidateAttributeRequest, resp *tfsdk.ValidateAttributeResponse) {
+				var creds *AdminCredentials
+				diag := req.Config.GetAttribute(ctx, req.AttributePath, creds)
+				if diag.HasError() {
+					// No attribute to validate
+					return
+				}
+				if creds != nil {
+					if common.IsStringAttributeEmpty(creds.Username) {
+						diag.AddError(errSumm, "Usename can't be empty")
+						return
+					}
+					if err := idps.ValidateHTPasswdUsername(creds.Username.Value); err != nil {
+						diag.AddError(errSumm, err.Error())
+						return
+					}
+				}
+			},
+		},
+		&common.AttributeValidator{
+			Desc: "Validate admin password",
+			Validator: func(ctx context.Context, req tfsdk.ValidateAttributeRequest, resp *tfsdk.ValidateAttributeResponse) {
+				var creds *AdminCredentials
+				diag := req.Config.GetAttribute(ctx, req.AttributePath, creds)
+				if diag.HasError() {
+					// No attribute to validate
+					return
+				}
+				if creds != nil {
+					if common.IsStringAttributeEmpty(creds.Password) {
+						diag.AddError(errSumm, "Usename can't be empty")
+						return
+					}
+					if err := idps.ValidateHTPasswdPassword(creds.Password.Value); err != nil {
+						diag.AddError(errSumm, err.Error())
+						return
 					}
 				}
 			},
