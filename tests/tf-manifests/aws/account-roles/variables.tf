@@ -5,7 +5,7 @@ variable rhcs_environment {
 
 variable openshift_version {
     type = string
-    default = "4.13"
+    default = "4.13.1"
 }
 
 variable account_role_prefix {

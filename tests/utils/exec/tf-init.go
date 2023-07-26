@@ -23,7 +23,7 @@ func GetLogger() *logging.Logger {
 var logger *logging.Logger = GetLogger()
 
 func runTerraformInit(ctx context.Context, dir string) error {
-	logger.Info("Running terraform init against the dir ", dir)
+	logger.Infof("Running terraform init against the dir %s", dir)
 	terraformInitCmd := exec.Command("terraform", "init")
 	terraformInitCmd.Dir = dir
 	var stdoutput bytes.Buffer
@@ -41,7 +41,7 @@ func runTerraformInit(ctx context.Context, dir string) error {
 }
 
 func runTerraformApplyWithArgs(ctx context.Context, dir string, terraformArgs []string) (output string, err error) {
-	applyArgs := append([]string{"apply"}, terraformArgs...)
+	applyArgs := append([]string{"apply", "-auto-approve"}, terraformArgs...)
 	logger.Infof("Running terraform apply against the dir: %s with args %v", dir, terraformArgs)
 	terraformApply := exec.Command("terraform", applyArgs...)
 	terraformApply.Dir = dir
@@ -61,8 +61,8 @@ func runTerraformApplyWithArgs(ctx context.Context, dir string, terraformArgs []
 	return
 }
 func runTerraformDestroyWithArgs(ctx context.Context, dir string, terraformArgs []string) error {
-	destroyArgs := append([]string{"destroy"}, terraformArgs...)
-	logger.Infof("Running terraform destroy against the dir: ", dir)
+	destroyArgs := append([]string{"destroy", "-auto-approve"}, terraformArgs...)
+	logger.Infof("Running terraform destroy against the dir: %s", dir)
 	terraformApply := exec.Command("terraform", destroyArgs...)
 	terraformApply.Dir = dir
 	terraformApply.Stdout = os.Stdout
@@ -72,7 +72,7 @@ func runTerraformDestroyWithArgs(ctx context.Context, dir string, terraformArgs 
 }
 func runTerraformOutput(ctx context.Context, dir string) (map[string]interface{}, error) {
 	outputArgs := []string{"output", "-json"}
-	logger.Infof("Running terraform output against the dir: ", dir)
+	logger.Infof("Running terraform output against the dir: %s", dir)
 	terraformOutput := exec.Command("terraform", outputArgs...)
 	terraformOutput.Dir = dir
 	output, err := terraformOutput.Output()

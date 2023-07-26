@@ -38,19 +38,20 @@ var _ = Describe("TF Test", func() {
 				AWSRegion:   region,
 				MultiAZ:     true,
 				VPCCIDR:     "11.0.0.0/16",
+				AZIDs:       []string{"us-west-2a", "us-west-2b", "us-west-2c"},
 			}
-			priSubnets, pubSubnets, zones, err := EXE.CreateAWSVPC(args, "-auto-approve")
+			priSubnets, pubSubnets, zones, err := EXE.CreateAWSVPC(args)
 			Expect(err).ToNot(HaveOccurred())
-			// defer DestroyAWSVPC(args, "-auto-approve")
+			defer EXE.DestroyAWSVPC(args)
 
 			By("Create account-roles")
 			accRoleParam := &EXE.AccountRolesArgs{
 				Token:             token,
 				AccountRolePrefix: accRolePrefix,
 			}
-			_, err = EXE.CreateMyTFAccountRoles(accRoleParam, "-auto-approve")
+			_, err = EXE.CreateMyTFAccountRoles(accRoleParam)
 			Expect(err).ToNot(HaveOccurred())
-			// defer DestroyMyTFAccountRoles(accRoleParam, "-auto-approve")
+			defer EXE.DestroyMyTFAccountRoles(accRoleParam)
 
 			By("Create Cluster")
 			clusterParam := &EXE.ClusterCreationArgs{
@@ -68,10 +69,10 @@ var _ = Describe("TF Test", func() {
 				OIDCConfig:           "managed",
 			}
 
-			clusterID, err := EXE.CreateMyTFCluster(clusterParam, "-auto-approve")
-			defer EXE.DestroyMyTFCluster(clusterParam, "-auto-approve")
-			Expect(clusterID).ToNot(BeEmpty())
+			clusterID, err := EXE.CreateMyTFCluster(clusterParam)
+			defer EXE.DestroyMyTFCluster(clusterParam)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(clusterID).ToNot(BeEmpty())
 
 		})
 	})

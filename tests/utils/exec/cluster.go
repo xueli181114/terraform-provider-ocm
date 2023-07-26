@@ -12,7 +12,7 @@ import (
 
 type ClusterCreationArgs struct {
 	AccountRolePrefix    string            `json:"account_role_prefix,omitempty"`
-	OCMENV               string            `json:"ocm_environment,omitempty"`
+	OCMENV               string            `json:"rhcs_environment,omitempty"`
 	ClusterName          string            `json:"cluster_name,omitempty"`
 	OperatorRolePrefix   string            `json:"operator_role_prefix,omitempty"`
 	OpenshiftVersion     string            `json:"openshift_version,omitempty"`
@@ -56,13 +56,13 @@ func CreateCluster(ctx context.Context, args ...string) (string, error) {
 
 func CreateTFCluster(ctx context.Context,
 	varArgs map[string]interface{}, abArgs ...string) (string, error) {
-	err := runTerraformInit(ctx, CON.ClusterDir)
+	err := runTerraformInit(ctx, CON.ROSAClassic)
 	if err != nil {
 		return "", err
 	}
 
 	args := combineArgs(varArgs, abArgs...)
-	_, err = runTerraformApplyWithArgs(ctx, CON.ClusterDir, args)
+	_, err = runTerraformApplyWithArgs(ctx, CON.ROSAClassic, args)
 	if err != nil {
 		return "", err
 	}

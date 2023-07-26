@@ -39,8 +39,8 @@ var (
 
 // Dirs of different types of clusters
 var (
-	ROSAclassic = path.Join(ClusterDir, "rosa-classic")
-	OSDccs      = path.Join(ClusterDir, "osd-ccs")
+	ROSAClassic = path.Join(ClusterDir, "rosa-classic")
+	OSDCCS      = path.Join(ClusterDir, "osd-ccs")
 )
 
 // Dirs of azure provider

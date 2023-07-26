@@ -30,9 +30,9 @@ locals {
   public_subnets = var.multi_az?local.public_cidr_map[var.vpc_cidr]:[local.public_cidr_map[var.vpc_cidr][0]]
 }
 
-locals {
-  azs =var.multi_az?var.az_ids[var.aws_region]:[var.az_ids[var.aws_region][0]]
-}
+# locals {
+#   azs =var.multi_az?var.az_ids[var.aws_region]:[var.az_ids[var.aws_region][0]]
+# }
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 4.0.0"
@@ -40,8 +40,7 @@ module "vpc" {
   name = "${var.cluster_name}-vpc"
   cidr = var.vpc_cidr
 
-  # azs             = local.azs
-  azs = var.test_zones
+  azs             = var.az_ids
   private_subnets = local.private_subnets
   public_subnets  = local.public_subnets
 
