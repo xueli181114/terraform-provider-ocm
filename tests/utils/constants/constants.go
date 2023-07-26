@@ -3,11 +3,15 @@ package constants
 import (
 	"os"
 	"path"
+	"strings"
 )
 
 func initDIR() string {
+	if os.Getenv("MANIFESTS_DIR") != "" {
+		return os.Getenv("MANIFESTS_DIR")
+	}
 	currentDir, _ := os.Getwd()
-	return path.Join(currentDir, "tf-manifests")
+	return path.Join(strings.SplitAfter(currentDir, "tests")[0], "tf-manifests")
 }
 
 var configrationDir = initDIR()
