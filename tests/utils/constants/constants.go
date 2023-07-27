@@ -45,3 +45,8 @@ var (
 
 // Dirs of azure provider
 // Just a placeholder
+
+const (
+	DefaultAWSRegion = "us-east-2"
+	TokenENVName     = "RHCS_TOKEN"
+)
