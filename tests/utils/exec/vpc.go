@@ -9,11 +9,11 @@ import (
 )
 
 type VPCVariables struct {
-	ClusterName string   `json:"cluster_name,omitempty"`
-	AZIDs       []string `json:"az_ids,omitempty"`
-	AWSRegion   string   `json:"aws_region,omitempty"`
-	MultiAZ     bool     `json:"multi_az,omitempty"`
-	VPCCIDR     string   `json:"vpc_cidr,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	AZIDs     *[]string `json:"az_ids,omitempty"`
+	AWSRegion string    `json:"aws_region,omitempty"`
+	MultiAZ   bool      `json:"multi_az,omitempty"`
+	VPCCIDR   string    `json:"vpc_cidr,omitempty"`
 }
 
 // ************ AWS resources ***************************

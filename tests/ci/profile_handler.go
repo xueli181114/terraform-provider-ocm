@@ -1,7 +1,10 @@
-package profiles
+package ci
 
 import (
 	"os"
+	"strings"
+
+	. "github.com/onsi/gomega"
 
 	CON "github.com/terraform-redhat/terraform-provider-rhcs/tests/utils/constants"
 	EXE "github.com/terraform-redhat/terraform-provider-rhcs/tests/utils/exec"
@@ -9,13 +12,13 @@ import (
 
 // Profile Provides profile struct for cluster creation be matrix
 type Profile struct {
-	ProductID     string `ini:"product_id,omitempty" json:"product_id,omitempty"`
-	Version       string `ini:"version,omitempty" json:"version,omitempty"` //Version supports indicated version started with openshift-v or minor-1
-	ChannelGroup  string `ini:"channel_group,omitempty" json:"channel_group,omitempty"`
-	CloudProvider string `ini:"cloud_provider,omitempty" json:"cloud_provider,omitempty"`
-	Region        string `ini:"region,omitempty" json:"region,omitempty"`
-	InstanceType  string `ini:"instance_type,omitempty" json:"instance_type,omitempty"`
-
+	ClusterName           string `ini:"cluster_name,omitempty" json:"cluster_name,omitempty"`
+	ProductID             string `ini:"product_id,omitempty" json:"product_id,omitempty"`
+	Version               string `ini:"version,omitempty" json:"version,omitempty"` //Version supports indicated version started with openshift-v or minor-1
+	ChannelGroup          string `ini:"channel_group,omitempty" json:"channel_group,omitempty"`
+	CloudProvider         string `ini:"cloud_provider,omitempty" json:"cloud_provider,omitempty"`
+	Region                string `ini:"region,omitempty" json:"region,omitempty"`
+	InstanceType          string `ini:"instance_type,omitempty" json:"instance_type,omitempty"`
 	Zones                 string `ini:"zones,omitempty" json:"zones,omitempty"`           // zones should be like a,b,c,d
 	StorageLB             bool   `ini:"storage_lb,omitempty" json:"storage_lb,omitempty"` // the unit is GIB, don't support unit set
 	Tagging               bool   `ini:"tagging,omitempty" json:"tagging,omitempty"`
@@ -44,8 +47,23 @@ type Profile struct {
 	ManifestsDIR          string `ini:"manifests_dir,omitempty" json:"manifests_dir,omitempty"`
 }
 
-func PrepareVPC(region string, privateLink bool, multiZone bool) ([]string, []string) {
-	return nil, nil
+func PrepareVPC(region string, privateLink bool, multiZone bool, azIDs []string, name ...string) ([]string, []string, []string) {
+
+	vpcArgs := &EXE.VPCVariables{
+		AWSRegion: region,
+		MultiAZ:   multiZone,
+		VPCCIDR:   CON.DefaultVPCCIDR,
+	}
+
+	if len(azIDs) != 0 {
+		vpcArgs.AZIDs = &azIDs
+	}
+	if len(name) == 1 {
+		vpcArgs.Name = name[0]
+	}
+	privateSubnets, publicSUbnets, zones, err := EXE.CreateAWSVPC(vpcArgs)
+	Expect(err).ToNot(HaveOccurred())
+	return privateSubnets, publicSUbnets, zones
 }
 
 func PrepareAccountRoles() {
@@ -58,13 +76,20 @@ func PrepareKMSKey() {}
 func PrepareRoute53() {}
 
 func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.ClusterCreationArgs, manifestsDir string) {
-	clusterArgs = &EXE.ClusterCreationArgs{}
+	clusterArgs = &EXE.ClusterCreationArgs{
+		Token: os.Getenv(CON.TokenENVName),
+	}
+	if profile.ClusterName != "" {
+		clusterArgs.ClusterName = profile.ClusterName
+	} else {
+		clusterArgs.ClusterName = "rhcs-tf" // Generate random chars later
+	}
 	if profile.AdminEnabled {
 		// clusterArgs.
 	}
 
 	if profile.STS {
-		acctPrefix := "tf-test"
+		acctPrefix := clusterArgs.ClusterName
 		accountRoleArgs := EXE.AccountRolesArgs{
 			AccountRolePrefix: acctPrefix,
 			OpenshiftVersion:  profile.Version,
@@ -90,9 +115,14 @@ func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.Cl
 	}
 
 	if profile.BYOVPC {
-		subnets, zones := PrepareVPC(profile.Region, profile.PrivateLink, profile.MultiAZ)
+		zones := strings.Split(profile.Zones, ",")
+		privateSubnets, publicSubnets, zones := PrepareVPC(profile.Region, profile.PrivateLink, profile.MultiAZ, zones, clusterArgs.ClusterName)
 		clusterArgs.AWSAvailabilityZones = zones
-		clusterArgs.AWSSubnetIDs = subnets
+		if profile.PrivateLink {
+			clusterArgs.AWSSubnetIDs = privateSubnets
+		} else {
+			clusterArgs.AWSSubnetIDs = append(privateSubnets, publicSubnets...)
+		}
 	}
 
 	if profile.Version != "" {
@@ -112,12 +142,17 @@ func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.Cl
 		}
 	}
 	if profile.NetWorkingSet {
-		clusterArgs.MachineCIDR = "10.1.0.0/16"
+		clusterArgs.MachineCIDR = CON.DefaultVPCCIDR
 	}
 
 	if profile.Proxy {
 	}
 
 	return clusterArgs, profile.ManifestsDIR
+}
 
+func CreateRHCSClusterByProfile(profile *Profile) (string, error) {
+	creationArgs, manifests_dir := GenerateClusterCreationArgsByProfile(profile)
+	clusterID, err := EXE.CreateMyTFCluster(creationArgs, manifests_dir)
+	return clusterID, err
 }

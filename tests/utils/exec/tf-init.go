@@ -41,7 +41,7 @@ func runTerraformInit(ctx context.Context, dir string) error {
 }
 
 func runTerraformApplyWithArgs(ctx context.Context, dir string, terraformArgs []string) (output string, err error) {
-	applyArgs := append([]string{"apply", "-auto-approve"}, terraformArgs...)
+	applyArgs := append([]string{"apply", "-auto-approve", "-no-color"}, terraformArgs...)
 	logger.Infof("Running terraform apply against the dir: %s with args %v", dir, terraformArgs)
 	terraformApply := exec.Command("terraform", applyArgs...)
 	terraformApply.Dir = dir
@@ -61,7 +61,7 @@ func runTerraformApplyWithArgs(ctx context.Context, dir string, terraformArgs []
 	return
 }
 func runTerraformDestroyWithArgs(ctx context.Context, dir string, terraformArgs []string) error {
-	destroyArgs := append([]string{"destroy", "-auto-approve"}, terraformArgs...)
+	destroyArgs := append([]string{"destroy", "-auto-approve", "-no-color"}, terraformArgs...)
 	logger.Infof("Running terraform destroy against the dir: %s", dir)
 	terraformApply := exec.Command("terraform", destroyArgs...)
 	terraformApply.Dir = dir

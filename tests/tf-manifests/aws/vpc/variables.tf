@@ -18,6 +18,7 @@ variable "aws_region" {
 
 variable "az_ids" {
   type = list(string)
+  default = null
 }
 
 # variable "az_ids" {
@@ -37,9 +38,9 @@ variable "az_ids" {
 #   }
 # }
 
-variable "cluster_name" {
+variable "name" {
     type        = string
-    description = "The name of the ROSA cluster to create"
+    description = "The name of the vpc to create"
     default     = "tf-ocm"
   
 }

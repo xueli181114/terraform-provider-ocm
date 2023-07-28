@@ -4,8 +4,12 @@ import (
 
 	// nolint
 
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	CI "github.com/terraform-redhat/terraform-provider-rhcs/tests/ci"
+	CON "github.com/terraform-redhat/terraform-provider-rhcs/tests/utils/constants"
 	EXE "github.com/terraform-redhat/terraform-provider-rhcs/tests/utils/exec"
 )
 
@@ -34,11 +38,11 @@ var _ = Describe("TF Test", func() {
 			accRolePrefix := "xueli-2"
 			By("Create VPCs")
 			args := &EXE.VPCVariables{
-				ClusterName: "xueli",
-				AWSRegion:   region,
-				MultiAZ:     true,
-				VPCCIDR:     "11.0.0.0/16",
-				AZIDs:       []string{"us-west-2a", "us-west-2b", "us-west-2c"},
+				Name:      "xueli",
+				AWSRegion: region,
+				MultiAZ:   true,
+				VPCCIDR:   "11.0.0.0/16",
+				AZIDs:     &[]string{"us-west-2a", "us-west-2b", "us-west-2c"},
 			}
 			priSubnets, pubSubnets, zones, err := EXE.CreateAWSVPC(args)
 			Expect(err).ToNot(HaveOccurred())
@@ -69,11 +73,29 @@ var _ = Describe("TF Test", func() {
 				OIDCConfig:           "managed",
 			}
 
-			clusterID, err := EXE.CreateMyTFCluster(clusterParam)
-			defer EXE.DestroyMyTFCluster(clusterParam)
+			clusterID, err := EXE.CreateMyTFCluster(clusterParam, CON.ROSAClassic)
+			defer EXE.DestroyMyTFCluster(clusterParam, CON.ROSAClassic)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(clusterID).ToNot(BeEmpty())
 
+		})
+
+		It("TestCreateClusterByProfile", func() {
+			profile := &CI.Profile{
+				ClusterName:   "xueli-tf",
+				MultiAZ:       false,
+				OIDCConfig:    "managed",
+				BYOVPC:        true,
+				Region:        "us-west-2",
+				Version:       "4.13.4",
+				InstanceType:  "r5.xlarge",
+				STS:           true,
+				NetWorkingSet: true,
+				ManifestsDIR:  CON.ROSAClassic,
+			}
+			clusterID, err := CI.CreateRHCSClusterByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+			fmt.Println(clusterID)
 		})
 	})
 })

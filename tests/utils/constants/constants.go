@@ -43,6 +43,17 @@ var (
 	OSDCCS      = path.Join(ClusterDir, "osd-ccs")
 )
 
+// Supports abs and relatives
+func GrantClusterManifestDir(manifestDir string) string {
+	var targetDir string
+	if path.Base(manifestDir) == ClusterDir {
+		targetDir = manifestDir
+	} else {
+		targetDir = path.Join(ClusterDir, manifestDir)
+	}
+	return targetDir
+}
+
 // Dirs of azure provider
 // Just a placeholder
 

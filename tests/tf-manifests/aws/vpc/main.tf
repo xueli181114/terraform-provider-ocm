@@ -29,18 +29,29 @@ locals {
   private_subnets = var.multi_az?local.private_cidr_map[var.vpc_cidr]:[local.private_cidr_map[var.vpc_cidr][0]]
   public_subnets = var.multi_az?local.public_cidr_map[var.vpc_cidr]:[local.public_cidr_map[var.vpc_cidr][0]]
 }
+data "aws_availability_zones" "available" {
+    filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+locals {
+  filterAZs = var.multi_az?slice(data.aws_availability_zones.available.names,0,3):slice(data.aws_availability_zones.available.names,0,1)
+}
+locals {
 
-# locals {
-#   azs =var.multi_az?var.az_ids[var.aws_region]:[var.az_ids[var.aws_region][0]]
-# }
+  azs =var.az_ids==null?local.filterAZs:var.az_ids
+}
+
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = ">= 4.0.0"
 
-  name = "${var.cluster_name}-vpc"
+  name = "${var.name}-vpc"
   cidr = var.vpc_cidr
 
-  azs             = var.az_ids
+  azs             = local.azs
   private_subnets = local.private_subnets
   public_subnets  = local.public_subnets
 

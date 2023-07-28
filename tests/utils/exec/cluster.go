@@ -34,41 +34,43 @@ type ClusterCreationArgs struct {
 }
 
 // *********************** Cluster CMS ***********************************
-func CreateCluster(ctx context.Context, args ...string) (string, error) {
-	runTerraformInit(ctx, CON.ClusterDir)
+// func CreateCluster(ctx context.Context,manifestsDir string, args ...string) (string, error) {
+// 	runTerraformInit(ctx, CON.ClusterDir)
 
-	runTerraformApplyWithArgs(ctx, CON.ClusterDir, args)
+// 	runTerraformApplyWithArgs(ctx, CON.ClusterDir, args)
 
-	getClusterIdCmd := exec.Command("terraform", "output", "-json", "cluster_id")
-	getClusterIdCmd.Dir = CON.ClusterDir
-	output, err := getClusterIdCmd.Output()
-	if err != nil {
-		return "", err
-	}
+// 	getClusterIdCmd := exec.Command("terraform", "output", "-json", "cluster_id")
+// 	getClusterIdCmd.Dir = CON.ClusterDir
+// 	output, err := getClusterIdCmd.Output()
+// 	if err != nil {
+// 		return "", err
+// 	}
 
-	splitOutput := strings.Split(string(output), "\"")
-	if len(splitOutput) <= 1 {
-		return "", fmt.Errorf("got no cluster id from the output")
-	}
+// 	splitOutput := strings.Split(string(output), "\"")
+// 	if len(splitOutput) <= 1 {
+// 		return "", fmt.Errorf("got no cluster id from the output")
+// 	}
 
-	return splitOutput[1], nil
-}
+// 	return splitOutput[1], nil
+// }
 
-func CreateTFCluster(ctx context.Context,
+func CreateTFCluster(ctx context.Context, manifestsDir string,
 	varArgs map[string]interface{}, abArgs ...string) (string, error) {
-	err := runTerraformInit(ctx, CON.ROSAClassic)
+	targetDir := CON.GrantClusterManifestDir(manifestsDir)
+	err := runTerraformInit(ctx, targetDir)
 	if err != nil {
 		return "", err
 	}
 
 	args := combineArgs(varArgs, abArgs...)
-	_, err = runTerraformApplyWithArgs(ctx, CON.ROSAClassic, args)
+
+	_, err = runTerraformApplyWithArgs(ctx, targetDir, args)
 	if err != nil {
 		return "", err
 	}
 
 	getClusterIdCmd := exec.Command("terraform", "output", "-json", "cluster_id")
-	getClusterIdCmd.Dir = CON.ClusterDir
+	getClusterIdCmd.Dir = targetDir
 	output, err := getClusterIdCmd.Output()
 	if err != nil {
 		return "", err
@@ -82,36 +84,37 @@ func CreateTFCluster(ctx context.Context,
 	return splitOutput[1], nil
 }
 
-func DestroyTFCluster(ctx context.Context,
+func DestroyTFCluster(ctx context.Context, manifestDir string,
 	varArgs map[string]interface{}, abArgs ...string) error {
-	err := runTerraformInit(ctx, CON.ClusterDir)
+	targetDir := CON.GrantClusterManifestDir(manifestDir)
+	err := runTerraformInit(ctx, targetDir)
 	if err != nil {
 		return err
 	}
 
 	args := combineArgs(varArgs, abArgs...)
-	err = runTerraformDestroyWithArgs(ctx, CON.ClusterDir, args)
-	if err != nil {
-		return err
-	}
+	err = runTerraformDestroyWithArgs(ctx, targetDir, args)
+	// if err != nil {
+	// 	return err
+	// }
 
-	getClusterIdCmd := exec.Command("terraform", "output", "-json", "cluster_id")
-	getClusterIdCmd.Dir = CON.ClusterDir
-	_, err = getClusterIdCmd.Output()
+	// getClusterIdCmd := exec.Command("terraform", "output", "-json", "cluster_id")
+	// getClusterIdCmd.Dir = targetDir
+	// _, err = getClusterIdCmd.Output()
 
 	return err
 }
 
-func CreateMyTFCluster(clusterArgs *ClusterCreationArgs, arg ...string) (string, error) {
+func CreateMyTFCluster(clusterArgs *ClusterCreationArgs, manifestsDir string, arg ...string) (string, error) {
 	parambytes, _ := json.Marshal(clusterArgs)
 	args := map[string]interface{}{}
 	json.Unmarshal(parambytes, &args)
-	return CreateTFCluster(context.TODO(), args, arg...)
+	return CreateTFCluster(context.TODO(), manifestsDir, args, arg...)
 }
 
-func DestroyMyTFCluster(clusterArgs *ClusterCreationArgs, arg ...string) error {
+func DestroyMyTFCluster(clusterArgs *ClusterCreationArgs, manifestsDir string, arg ...string) error {
 	parambytes, _ := json.Marshal(clusterArgs)
 	args := map[string]interface{}{}
 	json.Unmarshal(parambytes, &args)
-	return DestroyTFCluster(context.TODO(), args, arg...)
+	return DestroyTFCluster(context.TODO(), manifestsDir, args, arg...)
 }
