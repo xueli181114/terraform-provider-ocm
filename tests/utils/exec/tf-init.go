@@ -24,7 +24,7 @@ var logger *logging.Logger = GetLogger()
 
 func runTerraformInit(ctx context.Context, dir string) error {
 	logger.Infof("Running terraform init against the dir %s", dir)
-	terraformInitCmd := exec.Command("terraform", "init")
+	terraformInitCmd := exec.Command("terraform", "init", "-no-color")
 	terraformInitCmd.Dir = dir
 	var stdoutput bytes.Buffer
 	terraformInitCmd.Stdout = &stdoutput
@@ -105,6 +105,8 @@ func combineArgs(varAgrs map[string]interface{}, abArgs ...string) []string {
 		args = append(args, arg)
 	}
 	args = append(args, abArgs...)
+	// fmt.Println(args)
+	// os.Exit(0)
 	return args
 }
 

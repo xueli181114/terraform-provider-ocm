@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -56,7 +57,10 @@ func PrepareVPC(region string, privateLink bool, multiZone bool, azIDs []string,
 	}
 
 	if len(azIDs) != 0 {
-		vpcArgs.AZIDs = &azIDs
+		fmt.Println("******************")
+		fmt.Println(len(azIDs))
+		vpcArgs.AZIDs = azIDs
+		fmt.Println("******************")
 	}
 	if len(name) == 1 {
 		vpcArgs.Name = name[0]
@@ -87,6 +91,11 @@ func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.Cl
 	if profile.AdminEnabled {
 		// clusterArgs.
 	}
+	if profile.Region != "" {
+		clusterArgs.AWSRegion = profile.Region
+	} else {
+		clusterArgs.AWSRegion = CON.DefaultAWSRegion
+	}
 
 	if profile.STS {
 		acctPrefix := clusterArgs.ClusterName
@@ -96,7 +105,10 @@ func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.Cl
 			ChannelGroup:      profile.ChannelGroup,
 			Token:             os.Getenv(CON.TokenENVName),
 		}
-		EXE.CreateMyTFAccountRoles(&accountRoleArgs)
+		_, err := EXE.CreateMyTFAccountRoles(&accountRoleArgs)
+		if err != nil {
+			defer EXE.DestroyMyTFAccountRoles(&accountRoleArgs)
+		}
 		clusterArgs.AccountRolePrefix = acctPrefix
 		if profile.OIDCConfig != "" {
 			clusterArgs.OIDCConfig = profile.OIDCConfig
@@ -115,7 +127,11 @@ func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.Cl
 	}
 
 	if profile.BYOVPC {
-		zones := strings.Split(profile.Zones, ",")
+		var zones []string
+		if profile.Zones != "" {
+			zones = strings.Split(profile.Zones, ",")
+		}
+
 		privateSubnets, publicSubnets, zones := PrepareVPC(profile.Region, profile.PrivateLink, profile.MultiAZ, zones, clusterArgs.ClusterName)
 		clusterArgs.AWSAvailabilityZones = zones
 		if profile.PrivateLink {

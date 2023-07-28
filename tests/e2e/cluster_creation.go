@@ -42,7 +42,7 @@ var _ = Describe("TF Test", func() {
 				AWSRegion: region,
 				MultiAZ:   true,
 				VPCCIDR:   "11.0.0.0/16",
-				AZIDs:     &[]string{"us-west-2a", "us-west-2b", "us-west-2c"},
+				AZIDs:     []string{"us-west-2a", "us-west-2b", "us-west-2c"},
 			}
 			priSubnets, pubSubnets, zones, err := EXE.CreateAWSVPC(args)
 			Expect(err).ToNot(HaveOccurred())
@@ -92,6 +92,7 @@ var _ = Describe("TF Test", func() {
 				STS:           true,
 				NetWorkingSet: true,
 				ManifestsDIR:  CON.ROSAClassic,
+				// OIDCConfig:    "managed",
 			}
 			clusterID, err := CI.CreateRHCSClusterByProfile(profile)
 			Expect(err).ToNot(HaveOccurred())

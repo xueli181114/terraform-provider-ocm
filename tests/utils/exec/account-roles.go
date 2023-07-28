@@ -14,6 +14,7 @@ type AccountRolesArgs struct {
 	Token             string `json:"token,omitempty"`
 	URL               string `json:"url,omitempty"`
 	ChannelGroup      string `json:"channel_group,omitempty"`
+	// Fake              []string `json:"fake,omitempty"`
 }
 
 // ********************** AccountRoles CMD ******************************

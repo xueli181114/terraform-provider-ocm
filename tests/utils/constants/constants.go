@@ -46,7 +46,7 @@ var (
 // Supports abs and relatives
 func GrantClusterManifestDir(manifestDir string) string {
 	var targetDir string
-	if path.Base(manifestDir) == ClusterDir {
+	if strings.Contains(manifestDir, ClusterDir) {
 		targetDir = manifestDir
 	} else {
 		targetDir = path.Join(ClusterDir, manifestDir)

@@ -10,14 +10,17 @@ variable "url" {
 
 variable "operator_role_prefix" {
   type = string
+  default=null
 }
 
 variable "account_role_prefix" {
   type = string
+  default=null
 }
 
 variable "cluster_name" {
   type = string
+  default="rhcs-tf"
 }
 
 variable "hosted_cp" {
@@ -41,14 +44,17 @@ variable "openshift_version" {
 }
 
 variable "channel_group" {
+  type=string
   default = "stable"
 }
 
 variable "rhcs_environment" {
+   type=string
   default = "staging"
 }
 
 variable "product" {
+   type=string
   default = "rosa"
 }
 
@@ -166,8 +172,4 @@ variable "oidc_config"{
   description = "Set it to managed or un-managed, then the resources will be configured accordingly. When not set, traditional oidc provider will be created"
   default = null
   
-  validation {
-    condition = contains(["managed","un-managed"], var.oidc_config)
-    error_message = "oidc_config only allows to be managed, un-managed or null"
-  }
 }
