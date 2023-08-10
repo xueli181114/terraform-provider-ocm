@@ -1,7 +1,6 @@
 package ci
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -57,10 +56,7 @@ func PrepareVPC(region string, privateLink bool, multiZone bool, azIDs []string,
 	}
 
 	if len(azIDs) != 0 {
-		fmt.Println("******************")
-		fmt.Println(len(azIDs))
 		vpcArgs.AZIDs = azIDs
-		fmt.Println("******************")
 	}
 	if len(name) == 1 {
 		vpcArgs.Name = name[0]
