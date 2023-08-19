@@ -110,6 +110,13 @@ func combineArgs(varAgrs map[string]interface{}, abArgs ...string) []string {
 	return args
 }
 
+func combineStructArgs(argObj interface{}, abArgs ...string) []string {
+	parambytes, _ := json.Marshal(argObj)
+	args := map[string]interface{}{}
+	json.Unmarshal(parambytes, &args)
+	return combineArgs(args, abArgs...)
+}
+
 func CleanTFTempFiles(providerDir string) error {
 	tempList := []string{
 		// ".terraform",

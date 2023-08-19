@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	. "github.com/onsi/gomega"
+	// . "github.com/onsi/gomega"
 
 	CON "github.com/terraform-redhat/terraform-provider-rhcs/tests/utils/constants"
 	EXE "github.com/terraform-redhat/terraform-provider-rhcs/tests/utils/exec"
@@ -49,7 +49,8 @@ type Profile struct {
 
 func PrepareVPC(region string, privateLink bool, multiZone bool, azIDs []string, name ...string) ([]string, []string, []string) {
 
-	vpcArgs := &EXE.VPCVariables{
+	vpcService := EXE.NewVPCService()
+	vpcArgs := &EXE.VPCArgs{
 		AWSRegion: region,
 		MultiAZ:   multiZone,
 		VPCCIDR:   CON.DefaultVPCCIDR,
@@ -61,9 +62,18 @@ func PrepareVPC(region string, privateLink bool, multiZone bool, azIDs []string,
 	if len(name) == 1 {
 		vpcArgs.Name = name[0]
 	}
-	privateSubnets, publicSUbnets, zones, err := EXE.CreateAWSVPC(vpcArgs)
-	Expect(err).ToNot(HaveOccurred())
-	return privateSubnets, publicSUbnets, zones
+	err := vpcService.Create(vpcArgs)
+	if err != nil {
+		vpcService.Destroy()
+	}
+	privateSubnets, publicSubnets, zones, err := vpcService.Output()
+	// privateSubnets, publicSubnets, zones, err := EXE.CreateAWSVPC(vpcArgs)
+	// Expect(err).ToNot(HaveOccurred())
+	if err != nil {
+		vpcService.Destroy()
+		return nil, nil, nil
+	}
+	return privateSubnets, publicSubnets, zones
 }
 
 func PrepareAccountRoles() {
@@ -165,6 +175,11 @@ func GenerateClusterCreationArgsByProfile(profile *Profile) (clusterArgs *EXE.Cl
 
 func CreateRHCSClusterByProfile(profile *Profile) (string, error) {
 	creationArgs, manifests_dir := GenerateClusterCreationArgsByProfile(profile)
-	clusterID, err := EXE.CreateMyTFCluster(creationArgs, manifests_dir)
+	clusterService := EXE.NewClusterService(manifests_dir)
+	err := clusterService.Create(creationArgs)
+	if err != nil {
+		clusterService.Destroy(creationArgs)
+	}
+	clusterID, err := clusterService.Output()
 	return clusterID, err
 }
